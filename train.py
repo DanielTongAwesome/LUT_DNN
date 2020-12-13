@@ -13,7 +13,6 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 import tensorflow as tf
 import numpy as np
 
-
 def delete_empty_rows():
     file_name = "LookUpTable.txt"
     data = np.loadtxt(file_name)
@@ -27,30 +26,47 @@ def delete_empty_rows():
     np.savetxt('processed_data', data)
 
 
-def train_LUT():
-    # load data
-    file_name = 'processed_data'
-    data = np.loadtxt(file_name)
-    pre_x_train = np.delete(data, [1], axis=1).astype(int)
-    x_train = np.zeros(shape=(len(pre_x_train), 6))
+def format_data(data):
+    x_train = np.zeros(shape=(len(data), 6))
     scale_list = [4, 4, 4, 6, 8]
-    for i in range(len(pre_x_train)):
+    for i in range(len(data)):
         for j in range(6):
             if j == 5:
                 x_train[i][j] = 1
             else:
-                x_train[i][j] = pre_x_train[i][0] % 10 / scale_list[j]
-                pre_x_train[i][0] /= 10
+                x_train[i][j] = data[i][0] % 10 / scale_list[j]
+                data[i][0] /= 10
 
-    pre_y_train = np.delete(data, [0], axis=1)
-    y_train = pre_y_train / np.sqrt(np.sum(pre_y_train ** 2))
+    return x_train
+
+
+def train_LUT():
+    # load data
+    file_name = 'processed_data'
+    data = np.loadtxt(file_name)
+    np.random.shuffle(data)
+    train = data[:1000]
+    validation = data[1000:]
+
+    # prepare x train and validation
+    pre_x_train = np.delete(train, [1], axis=1).astype(int)
+    x_train = format_data(pre_x_train)
+
+    pre_x_validation = np.delete(validation, [1], axis=1).astype(int)
+    x_validation = format_data(pre_x_validation)
+
+    # prepare y train, validation and normalization
+    y_data = np.delete(data, [0], axis=1)
+    norm_factor = np.sqrt(np.sum(y_data ** 2))
+
+    pre_y_train = np.delete(train, [0], axis=1)
+    y_train = pre_y_train / norm_factor
+
+    pre_y_validation = np.delete(validation, [0], axis=1)
+    y_validation = pre_y_validation / norm_factor
 
     print(x_train)
     print(y_train)
-    print(np.sqrt(np.sum(pre_y_train ** 2)))
-
-    x_test_1 = np.array([[1, 1, 0.75, 1, 1, 1]])
-    x_test_2 = np.array([[0.25, 0.5, 0.75, 1, 1, 1]])
 
     # build model
     model = tf.keras.models.Sequential([
@@ -66,28 +82,12 @@ def train_LUT():
                   metrics=['mean_squared_error'])
 
     # train model
-    pre_train_test1 = model.predict(x_test_1)
-    pre_train_test2 = model.predict(x_test_2)
-    history = model.fit(x_train, y_train, epochs=20, batch_size=128)
-    after_train_test1 = model.predict(x_test_1)
-    after_train_test2 = model.predict(x_test_2)
+    model.fit(x_train, y_train, epochs=100, batch_size=64)
+    test_loss, accuracy = model.evaluate(x_validation, y_validation, verbose=2)
+    print('test loss - {}'.format(test_loss))
 
-    print('Input {} Before Training Accuracy - {} After Training Accuracy - {}'.format(
-        x_test_1, pre_train_test1, after_train_test1
-    ))
-    print('Original Value - {} Predict Value - {}'. format(
-        y_train[-1]*np.sqrt(np.sum(pre_y_train ** 2)),
-        after_train_test1*np.sqrt(np.sum(pre_y_train ** 2))
-    ))
-
-    print('Input {} Before Training Accuracy - {} After Training Accuracy - {}'.format(
-        x_test_2, pre_train_test2, after_train_test2
-    ))
-    print('Original Value - {} Predict Value - {}'. format(
-        y_train[-2]*np.sqrt(np.sum(pre_y_train ** 2)),
-        after_train_test2*np.sqrt(np.sum(pre_y_train ** 2))
-    ))
-
+    # save model
+    model.save_weights('Model/Test')
 
 
 if __name__ == "__main__":
